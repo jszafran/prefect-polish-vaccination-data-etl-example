@@ -1,3 +1,4 @@
+import pathlib
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -49,3 +50,9 @@ def get_csv_links_from_resource(resource_url: str) -> List[ResourceMetadata]:
     response = requests.get(resource_url)
     response.raise_for_status()
     return [extract_metadata(daily_data) for daily_data in response.json()["data"]]
+
+
+def download_csv(resource_metadata: ResourceMetadata, target_dir: pathlib.Path) -> None:
+    target_path = target_dir / f"{resource_metadata.date.isoformat()}.csv"
+    with open(str(target_path.absolute()), "wb") as f:
+        f.write(requests.get(resource_metadata.csv_url).content)
