@@ -1,7 +1,15 @@
-from typing import List, Optional
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
+
+
+@dataclass(frozen=True)
+class ResourceMetadata:
+    csv_url: str
+    date: datetime.date
 
 
 def get_resources_page_links() -> List[str]:
@@ -28,3 +36,16 @@ def get_resources_page_links() -> List[str]:
         f"{url}?page={page_num}"
         for page_num in range(first_page_num, last_page_num + 1)
     ]
+
+
+def get_csv_links_from_resource(resource_url: str) -> List[ResourceMetadata]:
+    def extract_metadata(data: Dict[str, Any]) -> ResourceMetadata:
+        attributes = data["attributes"]
+        return ResourceMetadata(
+            csv_url=attributes["link"],
+            date=datetime.strptime(attributes["data_date"], "%Y-%m-%d").date(),
+        )
+
+    response = requests.get(resource_url)
+    response.raise_for_status()
+    return [extract_metadata(daily_data) for daily_data in response.json()["data"]]
