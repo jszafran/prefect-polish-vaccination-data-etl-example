@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
+from prefect import task
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class ResourceMetadata:
     date: datetime.date
 
 
+@task
 def get_resources_page_links() -> List[str]:
     """
     Fetch available resource pages from dane.gov.pl API.
@@ -39,6 +41,7 @@ def get_resources_page_links() -> List[str]:
     ]
 
 
+@task
 def get_csv_links_from_resource(resource_url: str) -> List[ResourceMetadata]:
     def extract_metadata(data: Dict[str, Any]) -> ResourceMetadata:
         attributes = data["attributes"]
@@ -52,6 +55,7 @@ def get_csv_links_from_resource(resource_url: str) -> List[ResourceMetadata]:
     return [extract_metadata(daily_data) for daily_data in response.json()["data"]]
 
 
+@task
 def download_csv(resource_metadata: ResourceMetadata, target_dir: pathlib.Path) -> None:
     target_path = target_dir / f"{resource_metadata.date.isoformat()}.csv"
     with open(str(target_path.absolute()), "wb") as f:
