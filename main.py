@@ -1,27 +1,28 @@
+import datetime
 import pathlib
+import time
 
-from prefect import Flow
-from prefect.executors import LocalExecutor
-from prefect.run_configs import LocalRun
+import prefect
 
-from src.tasks import (
-    download_csv,
-    get_csv_links_from_resource,
-    get_resources_page_links,
-)
+from flows import covid19_vaccination_rate_etl_flow
 
-with Flow(
-    "COVID19 vaccination rate for Poland flow",
-    run_config=LocalRun(env={"foo": "bar"}),
-    executor=LocalExecutor(),
-) as flow:
-    resources_links = get_resources_page_links()
-    csv_links = get_csv_links_from_resource(resources_links[0])
-    resource_metadata = csv_links[0]
-    download_csv(
-        resource_metadata=resource_metadata,
-        target_dir=pathlib.Path(__file__).parent / "data",
+if __name__ == "__main__":
+    logger = prefect.context.get("logger")
+
+    # define target data directory
+    data_dir = pathlib.Path(__file__).parent / "data"
+    data_dir.mkdir(exist_ok=True)
+
+    # run flow
+    flow_start_time = time.monotonic()
+    covid19_vaccination_rate_etl_flow.run(
+        parameters={
+            "data_dir": data_dir,
+        }
     )
+    time_elapsed = round(time.monotonic() - flow_start_time, 2)
 
-
-flow.register(project_name="sandbox")
+    logger.info(
+        f"{covid19_vaccination_rate_etl_flow.name} finished. Time of execution: "
+        f"{datetime.timedelta(seconds=time_elapsed)}"
+    )

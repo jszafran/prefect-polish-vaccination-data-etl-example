@@ -1,9 +1,10 @@
 import pathlib
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+import prefect
 import requests
 from prefect import task
 
@@ -14,7 +15,7 @@ class ResourceMetadata:
     date: datetime.date
 
 
-@task
+@task(max_retries=3, retry_delay=timedelta(seconds=5))
 def get_resources_page_links() -> List[str]:
     """
     Fetch available resource pages from dane.gov.pl API.
@@ -25,8 +26,10 @@ def get_resources_page_links() -> List[str]:
             return None
         return int(query.split("=")[1])
 
+    logger = prefect.context.get("logger")
+
     url = "https://api.dane.gov.pl/1.4/datasets/2476,odsetek-osob-zaszczepionych-przeciwko-covid19-w-gm/resources"
-    response = requests.get(url)
+    response = requests.get(url, timeout=3)
     response.raise_for_status()
     links = response.json()["links"]
     first_link, last_link = urlparse(links["self"]), urlparse(links["last"])
@@ -34,15 +37,16 @@ def get_resources_page_links() -> List[str]:
         extract_page_num_from_query(first_link.query),
         extract_page_num_from_query(last_link.query),
     )
-
-    return [
+    page_links = [
         f"{url}?page={page_num}"
         for page_num in range(first_page_num, last_page_num + 1)
     ]
+    logger.info(f"Extracted {len(page_links)} pages: {page_links}")
+    return page_links
 
 
-@task
-def get_csv_links_from_resource(resource_url: str) -> List[ResourceMetadata]:
+@task(max_retries=3, retry_delay=timedelta(seconds=5))
+def get_csv_links_from_resource_page(resource_url: str) -> List[ResourceMetadata]:
     def extract_metadata(data: Dict[str, Any]) -> ResourceMetadata:
         attributes = data["attributes"]
         return ResourceMetadata(
@@ -50,13 +54,14 @@ def get_csv_links_from_resource(resource_url: str) -> List[ResourceMetadata]:
             date=datetime.strptime(attributes["data_date"], "%Y-%m-%d").date(),
         )
 
-    response = requests.get(resource_url)
+    response = requests.get(resource_url, timeout=3)
     response.raise_for_status()
     return [extract_metadata(daily_data) for daily_data in response.json()["data"]]
 
 
-@task
+@task(max_retries=5, retry_delay=timedelta(seconds=5))
 def download_csv(resource_metadata: ResourceMetadata, target_dir: pathlib.Path) -> None:
     target_path = target_dir / f"{resource_metadata.date.isoformat()}.csv"
+
     with open(str(target_path.absolute()), "wb") as f:
-        f.write(requests.get(resource_metadata.csv_url).content)
+        f.write(requests.get(resource_metadata.csv_url, timeout=8).content)
